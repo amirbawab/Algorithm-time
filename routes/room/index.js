@@ -74,14 +74,52 @@ module.exports = function(models) {
 	  models.room_model.findOne({room: room}, function(err, roomObj){
 	  	data = {room:roomObj}
 	  	viewUtils.initializeSession(req, data, models, function(data){
-	  		models.user_prob_model.find({user: data.user.nickname, accept: true}, function(err, rels){
+	  		models.user_prob_model.find({user: data.user.nickname, complete:true}, function(err, rels){
 	  			data.solved = [];
 	  			for(var i = 0; i < rels.length; i ++){
 	  				data.solved.push(rels[i].prob);
 	  			}
 		  		models.prob_model.find({room: roomObj.room}, function(err, probs){
 			  		data.probs = probs;
-			  		viewUtils.load(res, 'room/index', data);
+
+			  		models.prob_model.aggregate([
+			  			{
+			  				$match:
+			  				{
+			  					room: roomObj.room
+			  				}
+			  			},
+			  			{
+			  				$lookup:
+			  				{
+			  					from: "userprobs",
+			  					localField: "id",
+			  					foreignField: "prob",
+			  					as: "userprobs"
+			  				}
+			  			},
+			  			{
+			  				$unwind: "$userprobs"
+			  			},
+			  			{
+			  				$group:
+			  				{
+			  					_id: "$userprobs.user",
+			  					totalScore: { $sum: "$score" },
+			  					count: { $sum: 1 }
+			  				}
+			  			},
+			  			{
+			  				$sort:
+			  				{
+			  					totalScore: -1
+			  				}
+			  			}
+			  		], function(err, leaderboards){
+			  			data.room_leaderboards = leaderboards;
+
+			  			viewUtils.load(res, 'room/index', data);
+			  		});
 			  	}).sort({score:1});	
 	  		});
 	  	});
